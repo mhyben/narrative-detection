@@ -1,0 +1,25 @@
+# Backend API requirements
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Frontend requirements
+streamlit==1.28.0
+requests==2.31.0
+
+# Common dependencies
+
+pandas~=2.3.0
+tqdm~=4.67.1
+wikipedia~=1.4.0
+gliner~=0.2.21
+keras~=3.10.0
+numpy~=2.0.1
+umap-learn~=0.5.7
+bertopic~=0.17.0
+httpcore~=1.0.9
+sentence-transformers~=4.1.0
+scikit-learn~=1.7.0
+langdetect~=1.0.9
+wtpsplit~=2.1.6
+Levenshtein
