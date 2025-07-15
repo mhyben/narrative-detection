@@ -9,7 +9,7 @@ from pandas import DataFrame
 
 import pipeline
 
-def visualize(embedding_2d: np.ndarray, retrieved_df: DataFrame, output_dir='./results', open_browser=True):
+def visualize(embedding_2d: np.ndarray, retrieved_df: DataFrame, output_dir='./results', open_browser=False):
     """Create interactive visualization of the narrative map."""
 
     print("Creating interactive visualization...")
@@ -31,6 +31,7 @@ def visualize(embedding_2d: np.ndarray, retrieved_df: DataFrame, output_dir='./r
         np.save(join(output_dir, "narrative_map.npy"), embedding_2d)
         retrieved_df.to_csv(join(output_dir, "narrative_analysis.csv"), index=False)
 
+        # By default, do not open the browser as frontend will handle display
         if open_browser:
             try:
                 output_path_abs = os.path.abspath(output_path)

@@ -15,7 +15,6 @@ def run_backend_thread():
     thread.start()
     time.sleep(1)  # Give backend time to start
 
-run_backend_thread()
 
 # ---- Streamlit UI ----
 st.set_page_config(page_title="Narrative Mapper", layout="wide")
@@ -179,6 +178,14 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.title("Narrative Mapper")
+
+# Place loading message and spinner
+loading_placeholder = st.empty()
+with loading_placeholder.container():
+    st.markdown("**Loading backend...**")
+    st.markdown('<div class="loading-spinner"></div>', unsafe_allow_html=True)
+    # Run backend
+    run_backend_thread()
 
 # --- Fetch options from backend ---
 corpuses_resp = requests.get("http://127.0.0.1:8000/corpuses/")

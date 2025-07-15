@@ -4,7 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c54b4f7f-8579-467d-a99a-d0d4a984fd36" name="Changes" comment="Initial full version&#10;- BERTopic for initial clustering&#10;- Louvain with HDBScan for fine-grained sub-clustering&#10;- DataMapPlot for interactive visualization&#10;- Streamlit for frontend" />
+    <list default="true" id="c54b4f7f-8579-467d-a99a-d0d4a984fd36" name="Changes" comment="Initial full version&#10;- BERTopic for initial clustering&#10;- Louvain with HDBScan for fine-grained sub-clustering&#10;- DataMapPlot for interactive visualization&#10;- Streamlit for frontend">
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/mdb-multicw-updated-2e6-5e.keras" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/pipeline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/visualization.py" beforeDir="false" afterPath="$PROJECT_DIR$/visualization.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -43,26 +51,29 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.backend_api.executor": "Run",
-    "Python.demo.executor": "Debug",
-    "Python.frontend.executor": "Run",
-    "Python.frontend_app.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.streamlit.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "261ded6f",
-    "last_opened_file_path": "/home/hyben/KInIT/Projects/veraAI/T4.2-Narrative detection/Narrative detection",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "project.propVCSSupport.DirectoryMappings",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_MARK_IGNORED_FILES_AS_EXCLUDED&quot;: &quot;true&quot;,
+    &quot;Python.backend_api.executor&quot;: &quot;Run&quot;,
+    &quot;Python.demo.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.frontend.executor&quot;: &quot;Run&quot;,
+    &quot;Python.frontend_app.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.streamlit.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/hyben/KInIT/Projects/veraAI/T4.1-Claim detection/MultiCW&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;project.propVCSSupport.DirectoryMappings&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager" selected="Python.main">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="Narrative detection" />
@@ -154,7 +165,9 @@
       <workItem from="1752134811937" duration="12889000" />
       <workItem from="1752148236250" duration="5549000" />
       <workItem from="1752482408133" duration="11677000" />
-      <workItem from="1752512958339" duration="15000" />
+      <workItem from="1752512958339" duration="753000" />
+      <workItem from="1752564436857" duration="3965000" />
+      <workItem from="1752591265788" duration="695000" />
     </task>
     <task id="LOCAL-00001" summary="Initial full version&#10;- BERTopic for initial clustering&#10;- Louvain with HDBScan for fine-grained sub-clustering&#10;- DataMapPlot for interactive visualization&#10;- Streamlit for frontend">
       <option name="closed" value="true" />
@@ -172,7 +185,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752510555133</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Initial full version&#10;- BERTopic for initial clustering&#10;- Louvain with HDBScan for fine-grained sub-clustering&#10;- DataMapPlot for interactive visualization&#10;- Streamlit for frontend">
+      <option name="closed" value="true" />
+      <created>1752513405552</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1752513405552</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -201,6 +222,6 @@
     <SUITE FILE_PATH="coverage/Narrative_detection$backend_api.coverage" NAME="backend Coverage Results" MODIFIED="1752086908832" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Narrative_detection$demo.coverage" NAME="streamlit Coverage Results" MODIFIED="1751918815580" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Narrative_detection$streamlit.coverage" NAME="streamlit Coverage Results" MODIFIED="1752082664394" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/Narrative_detection$main.coverage" NAME="main Coverage Results" MODIFIED="1752155448703" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Narrative_detection$main.coverage" NAME="main Coverage Results" MODIFIED="1752591958549" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

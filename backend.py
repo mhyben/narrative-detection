@@ -23,6 +23,13 @@ class ClaimExtractionRequest(BaseModel):
 class EntityExtractionRequest(BaseModel):
     text: str
 
+class PipelineRequest(BaseModel):
+    corpus: str
+    embedder: Optional[str] = None
+    min_macro_cluster_size: int = 50
+    min_micro_cluster_size: int = 5
+    # Add more options as needed (e.g., LLM, etc.)
+
 # --- In-memory cache for loaded corpus (for demo) ---
 corpus_cache = {}
 embedding_cache = {"Multilingual E5 Large": "intfloat/multilingual-e5-large",
@@ -70,6 +77,31 @@ def extract_entities(req: EntityExtractionRequest):
     # Use a pandas Series for compatibility
     entities = extractor.extract_entities(pd.Series([req.text]))
     return {"entities": entities[0] if entities else []}
+
+@app.post("/run_pipeline/")
+def run_pipeline_endpoint(req: PipelineRequest):
+    # Load corpus
+    if req.corpus == "MultiClaim-v2":
+        df = load_multi_claim()
+    elif req.corpus == "MediaContent-Library":
+        df = load_media_content()
+    else:
+        return {"error": "Unknown corpus"}
+    
+    # Run pipeline
+    pipeline = NarrativeDetectionPipeline()
+    result_df = pipeline.run_pipeline(
+        data=df,
+        min_cluster_size=req.min_micro_cluster_size,
+        output_dir="results"
+    )
+    # Return a preview or summary
+    return {
+        "columns": list(result_df.columns),
+        "preview": result_df.head(10).to_dict(orient="records"),
+        "n_macro_clusters": len(result_df['macro_cluster'].unique()),
+        "n_micro_clusters": len(result_df['micro_cluster'].unique())
+    }
 
 
 # For running as a thread

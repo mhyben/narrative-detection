@@ -6,7 +6,8 @@ Implements the main pipeline for narrative detection, integrating claim extracti
 See narrative_detection_pipeline_plan.md for detailed design.
 """
 import ast
-from typing import Optional, Any, Dict, List, Counter
+from collections import Counter
+from typing import Optional, Any, Dict, List
 
 import networkx as nx
 import numpy as np
@@ -53,10 +54,6 @@ class NarrativeDetectionPipeline:
         Returns:
             Processed DataFrame with hierarchical cluster assignments
         """
-        print("=== RUNNING IMPROVED CLUSTERING PIPELINE ===")
-        print(f"Minimum cluster size: {min_cluster_size}")
-        print(f"Maximum BERTopic iterations: {max_iterations}")
-
         assert 'text' in data.columns, "'text' column not found in DataFrame. Please provide claims as 'text'."
         assert 'lang' in data.columns, "'lang' column not found in DataFrame. Please provide language for each claim as 'lang'."
         assert 'entities' in data.columns, "'entities' column not found in DataFrame. Please extract entities first."
@@ -115,7 +112,7 @@ class NarrativeDetectionPipeline:
         embedding_2d = self.narrative_map(result_df, model)
 
         # 9. Visualize results
-        visualize(embedding_2d, result_df, output_dir)
+        visualize(embedding_2d, result_df, output_dir, open_browser=False)
 
         print("\n=== IMPROVED CLUSTERING ANALYSIS SUMMARY ===")
         print(f"Total texts: {len(result_df)}")
