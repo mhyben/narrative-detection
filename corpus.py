@@ -33,7 +33,15 @@ def load_multi_claim() -> pd.DataFrame:
     mc_path = join('datasets', 'multi-claim.csv')
 
     if exists(mc_path):
-        data = pd.read_csv(mc_path, converters={'embedding': eval} if 'embedding' in pd.read_csv(mc_path, nrows=0).columns else None)
+        # Check if entities column exists in the CSV
+        columns = pd.read_csv(mc_path, nrows=0).columns
+        converters = {}
+        if 'embedding' in columns:
+            converters['embedding'] = eval
+        if 'entities' in columns:
+            converters['entities'] = eval
+        
+        data = pd.read_csv(mc_path, converters=converters)
         print('ok')
     else:
         print('\nPreprocessing multi-claim dataset:')
@@ -64,7 +72,15 @@ def load_media_content() -> pd.DataFrame:
     mcl_path = join('datasets', 'media-content.csv')
 
     if exists(mcl_path):
-        data = pd.read_csv(mcl_path, converters={'embedding': eval} if 'embedding' in pd.read_csv(mcl_path, nrows=0).columns else None)
+        # Check if entities column exists in the CSV
+        columns = pd.read_csv(mcl_path, nrows=0).columns
+        converters = {}
+        if 'embedding' in columns:
+            converters['embedding'] = eval
+        if 'entities' in columns:
+            converters['entities'] = eval
+        
+        data = pd.read_csv(mcl_path, converters=converters)
         print('ok')
     else:
         print('\nPreprocessing media-content dataset:')

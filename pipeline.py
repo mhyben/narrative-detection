@@ -6,6 +6,8 @@ Implements the main pipeline for narrative detection, integrating claim extracti
 See narrative_detection_pipeline_plan.md for detailed design.
 """
 import ast
+import os
+import pickle
 from collections import Counter
 from typing import Optional, Any, Dict, List
 
@@ -41,22 +43,60 @@ class NarrativeDetectionPipeline:
         self.llm_client = None  # Ollama API client
         self.save_resources = False
 
-    def run_pipeline(self, data: DataFrame, min_cluster_size=5, max_iterations=3, output_dir="results") -> Any:
+    def run_pipeline(self, data: DataFrame, min_cluster_size=5, max_iterations=3, output_dir="results",
+                    use_cache=True, generate_descriptions=True) -> Any:
         """
-        Run the complete pipeline with optional entity matching and resource management.
+        Run the complete pipeline with optional caching and description generation.
 
         Args:
             data: Dataset containing claims, entities and their language
             min_cluster_size: Minimum cluster size for BERTopic and HDBSCAN
             max_iterations: Maximum number of BERTopic iterations for handling outliers
             output_dir: Directory to save outputs
+            use_cache: Whether to use cached results if available
+            generate_descriptions: Whether to generate cluster descriptions
 
         Returns:
             Processed DataFrame with hierarchical cluster assignments
         """
         assert 'text' in data.columns, "'text' column not found in DataFrame. Please provide claims as 'text'."
         assert 'lang' in data.columns, "'lang' column not found in DataFrame. Please provide language for each claim as 'lang'."
-        assert 'entities' in data.columns, "'entities' column not found in DataFrame. Please extract entities first."
+        
+        # Check if entities column exists, if not, create an empty one
+        if 'entities' not in data.columns:
+            print("Warning: 'entities' column not found. Creating empty entities column.")
+            data['entities'] = [[] for _ in range(len(data))]
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Check if cached results exist
+        cache_file = os.path.join(output_dir, "cached_clusters.pkl")
+        if use_cache and os.path.exists(cache_file):
+            print("Loading cached clusters...")
+            try:
+                with open(cache_file, 'rb') as f:
+                    cached_results = pickle.load(f)
+                
+                # Check if we need to update with new data
+                cached_texts = set(cached_results['text'].tolist())
+                new_texts = set(data['text'].tolist())
+                
+                if cached_texts == new_texts:
+                    print("Using cached results - no new data detected")
+                    
+                    # If descriptions are needed but not in cache, generate them
+                    if generate_descriptions and 'cluster_summary' not in cached_results.columns:
+                        print("Generating descriptions for cached results...")
+                        return self.generate_cluster_descriptions(cached_results, data, output_dir)
+                    
+                    return cached_results
+                else:
+                    print(f"Found {len(new_texts - cached_texts)} new texts, updating clusters...")
+                    # For simplicity, we'll just run the full pipeline again
+                    # In a production system, you would implement incremental updates
+            except Exception as e:
+                print(f"Error loading cache: {str(e)}. Running full pipeline...")
 
         # 1. Generate embeddings from text
         embeddings, model = self.embed_texts(data['text'].tolist())
@@ -70,49 +110,44 @@ class NarrativeDetectionPipeline:
             max_iterations=max_iterations
         )
 
-        # 3. Generate macro cluster summaries
-        macro_summaries = {}
-        for macro_id in df['macro_cluster'].unique():
-            cluster_texts = df[df['macro_cluster'] == macro_id]['text'].tolist()
-            cluster_entities = df[df['macro_cluster'] == macro_id]['entities'].tolist()
-            summary = self.hybrid_cluster_summary(cluster_texts, cluster_entities)
-            macro_summaries[macro_id] = summary
-
-        df['cluster_summary'] = df['macro_cluster'].map(macro_summaries)
-
-        # 4. Perform hierarchical sub-clustering
+        # 3. Perform hierarchical sub-clustering
         df = self.hierarchical_subclustering(
             df=data,
             embeddings=embeddings,
             min_cluster_size=min_cluster_size
         )
 
-        # 5. Generate micro cluster summaries
-        micro_summaries = {}
-        for micro_id in df['micro_cluster'].unique():
-            if micro_id == -1:
-                continue
-            cluster_texts = df[df['micro_cluster'] == micro_id]['text'].tolist()
-            cluster_entities = df[df['micro_cluster'] == micro_id]['entities'].tolist()
-            summary = self.hybrid_cluster_summary(cluster_texts, cluster_entities)
-            micro_summaries[micro_id] = summary
-
-        # Update cluster_summary with micro cluster summaries
-        df['cluster_summary'] = df['micro_cluster'].map(micro_summaries)
-
-        # 6. Add embeddings column
+        # 4. Add embeddings column
         df['embedding'] = list(embeddings)
 
-        # 7. Keep only required columns
-        result_columns = ['text', 'published', 'lang', 'embedding', 'macro_cluster', 'micro_cluster',
-                          'cluster_summary']
-        result_df = df[result_columns]
+        # 5. Keep only required columns
+        result_columns = ['text', 'published', 'lang', 'embedding', 'macro_cluster', 'micro_cluster']
+        result_df = df[result_columns].copy()
 
-        # 8. Create 2D narrative map for visualization
+        # 6. Create 2D narrative map for visualization
         embedding_2d = self.narrative_map(result_df, model)
 
-        # 9. Visualize results
-        visualize(embedding_2d, result_df, output_dir, open_browser=False)
+        # 7. Save the embedding for later use
+        np.save(os.path.join(output_dir, "narrative_map.npy"), embedding_2d)
+        result_df.to_csv(os.path.join(output_dir, "narrative_analysis.csv"), index=False)
+        
+        # Cache the results
+        if use_cache:
+            try:
+                with open(cache_file, 'wb') as f:
+                    pickle.dump(result_df, f)
+                print(f"Cached results saved to {cache_file}")
+            except Exception as e:
+                print(f"Error caching results: {str(e)}")
+
+        # 8. Generate descriptions if requested
+        if generate_descriptions:
+            print("Generating cluster descriptions...")
+            result_df = self.generate_cluster_descriptions(result_df, data, output_dir, embedding_2d)
+        else:
+            # Create empty descriptions for visualization
+            result_df['cluster_summary'] = ""
+            visualize(embedding_2d, result_df, output_dir, open_browser=False)
 
         print("\n=== IMPROVED CLUSTERING ANALYSIS SUMMARY ===")
         print(f"Total texts: {len(result_df)}")
@@ -123,6 +158,61 @@ class NarrativeDetectionPipeline:
         print(f"Results saved to {output_dir}/narrative_analysis.csv")
         print(f"Visualization saved to {output_dir}/narrative_map.html")
 
+        return result_df
+        
+    def generate_cluster_descriptions(self, result_df, data, output_dir, embedding_2d=None):
+        """
+        Generate descriptions for clusters and update visualization.
+        
+        Args:
+            result_df: DataFrame with cluster assignments
+            data: Original data with entities
+            output_dir: Directory to save outputs
+            embedding_2d: 2D embeddings for visualization (optional)
+            
+        Returns:
+            Updated DataFrame with cluster descriptions
+        """
+        # Load embedding_2d if not provided
+        if embedding_2d is None:
+            try:
+                embedding_2d = np.load(os.path.join(output_dir, "narrative_map.npy"))
+            except Exception as e:
+                print(f"Error loading embeddings: {str(e)}. Creating new embeddings...")
+                embedding_2d = self.narrative_map(result_df, SentenceTransformer("sentence-transformers/paraphrase-xlm-r-multilingual-v1"))
+        
+        # Generate macro cluster summaries
+        print("Generating macro cluster summaries...")
+        macro_summaries = {}
+        for macro_id in tqdm(result_df['macro_cluster'].unique()):
+            cluster_texts = result_df[result_df['macro_cluster'] == macro_id]['text'].tolist()
+            # Get entities from original data
+            cluster_entities = data[data['text'].isin(cluster_texts)]['entities'].tolist()
+            summary = self.hybrid_cluster_summary(cluster_texts, cluster_entities)
+            macro_summaries[macro_id] = summary
+        
+        # Generate micro cluster summaries
+        print("Generating micro cluster summaries...")
+        micro_summaries = {}
+        for micro_id in tqdm(result_df['micro_cluster'].unique()):
+            if micro_id == -1:
+                continue
+            cluster_texts = result_df[result_df['micro_cluster'] == micro_id]['text'].tolist()
+            # Get entities from original data
+            cluster_entities = data[data['text'].isin(cluster_texts)]['entities'].tolist()
+            summary = self.hybrid_cluster_summary(cluster_texts, cluster_entities)
+            micro_summaries[micro_id] = summary
+        
+        # Update with descriptions (prefer micro cluster descriptions)
+        result_df['cluster_summary'] = result_df['micro_cluster'].map(micro_summaries)
+        
+        # Save updated results
+        result_df.to_csv(os.path.join(output_dir, "narrative_analysis.csv"), index=False)
+        
+        # Update visualization
+        visualize(embedding_2d, result_df, output_dir, open_browser=False)
+        print(f"Updated visualization saved to {output_dir}/narrative_map.html")
+        
         return result_df
 
     @staticmethod
@@ -342,7 +432,7 @@ class NarrativeDetectionPipeline:
     def hybrid_cluster_summary(self, texts, entities, model="gemma3:4b"):
         """Generate a hybrid summary using both entity extraction and LLM."""
         if len(texts) == 0:
-            return ''
+            return 'Empty cluster'
 
         # --- Normalize and count entities ---
         all_entities = []
@@ -361,12 +451,45 @@ class NarrativeDetectionPipeline:
         entity_counts = Counter(all_entities)
         top_entities = [e for e, _ in entity_counts.most_common(5) if e]
         entity_context = ", ".join(top_entities)
+        
+        # If we have no entities, extract key terms from the texts
+        if not entity_context:
+            # Simple keyword extraction from texts
+            from collections import Counter
+            import re
+            
+            # Combine all texts
+            combined_text = " ".join(texts)
+            
+            # Remove punctuation and convert to lowercase
+            words = re.findall(r'\b\w+\b', combined_text.lower())
+            
+            # Remove common stop words (simplified list)
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about',
+                         'as', 'of', 'is', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does',
+                         'did', 'this', 'that', 'these', 'those', 'it', 'its', 'they', 'them', 'their'}
+            
+            filtered_words = [word for word in words if word not in stop_words and len(word) > 3]
+            
+            # Count word frequencies
+            word_counts = Counter(filtered_words)
+            
+            # Get top 5 keywords
+            top_keywords = [word for word, _ in word_counts.most_common(5)]
+            entity_context = ", ".join(top_keywords)
 
         # --- Truncate texts for prompt ---
         short_texts = [t.strip()[:300] for t in texts[:5]]
+        
+        # Create a summary based on the first few texts if Ollama is not available
+        fallback_summary = f"Cluster about: {entity_context}" if entity_context else "Cluster: " + ", ".join(short_texts[:2])
+        
+        # Truncate fallback summary to a reasonable length
+        if len(fallback_summary) > 50:
+            fallback_summary = fallback_summary[:47] + "..."
 
         prompt = f"""
-        Summarize the common narrative in the following texts. 
+        Summarize the common narrative in the following texts.
         Focus on these key entities if relevant: {entity_context}
         Label it clearly, in maximum 5 words and without any commentary.
 
@@ -386,16 +509,23 @@ class NarrativeDetectionPipeline:
                 timeout=60  # Increased timeout
             )
             if response.status_code == 200:
-                return response.json()['response'].strip()
+                summary = response.json()['response'].strip()
+                # Ensure the summary is not too long
+                if len(summary) > 50:
+                    summary = summary[:47] + "..."
+                return summary
             else:
                 print(f"Cluster (HTTP Error: {response.status_code})")
-                return f"Entities: {entity_context}" if entity_context else "No description available"
+                return fallback_summary
         except ReadTimeout:
             print("Cluster (Timeout: Ollama API took too long to respond)")
-            return f"Entities: {entity_context}" if entity_context else "Summary timed out"
+            return fallback_summary
+        except requests.exceptions.ConnectionError:
+            print("Cluster (Connection Error: Could not connect to Ollama API)")
+            return fallback_summary
         except Exception as e:
             print(f"Cluster (Error: {str(e)})")
-            return f"Entities: {entity_context}" if entity_context else "No description available"
+            return fallback_summary
 
     def summarize_cluster(self, texts, model="gemma3:4b"):
         """Summarize a cluster using Ollama LLM API."""

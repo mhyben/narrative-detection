@@ -7,13 +7,63 @@ import requests
 import threading
 import time
 
+# Function to highlight claims in text
+def highlight_claims(text, positions):
+    """Highlight claims in the text using HTML."""
+    if not positions:
+        return text
+    
+    # Create a copy of the text
+    highlighted = text
+    
+    # Sort positions by start index (descending to avoid index shifting)
+    sorted_pos = sorted(positions, key=lambda x: x['start'], reverse=True)
+    
+    # Insert HTML tags for highlighting
+    for pos in sorted_pos:
+        start, end = pos['start'], pos['end']
+        highlighted = highlighted[:start] + f'<span style="background-color: yellow; color: black;">{highlighted[start:end]}</span>' + highlighted[end:]
+    
+    return highlighted
+
 # ---- Start Backend in Separate Thread ----
 def run_backend_thread():
     # Import here to avoid circular import
     from backend import start_backend
+    
+    # Check if backend is already running
+    try:
+        # Try to connect to the backend
+        response = requests.get("http://127.0.0.1:8000/corpuses/", timeout=0.5)
+        if response.status_code == 200:
+            print("Backend is already running.")
+            return
+    except requests.exceptions.ConnectionError:
+        # Backend is not running, start it
+        pass
+    except Exception as e:
+        print(f"Error checking backend status: {str(e)}")
+    
+    # Start backend in a separate thread
     thread = threading.Thread(target=start_backend, daemon=True)
     thread.start()
-    time.sleep(1)  # Give backend time to start
+    
+    # Wait for backend to start (with timeout)
+    max_retries = 5
+    for i in range(max_retries):
+        try:
+            response = requests.get("http://127.0.0.1:8000/corpuses/", timeout=0.5)
+            if response.status_code == 200:
+                print("Backend started successfully.")
+                break
+        except requests.exceptions.ConnectionError:
+            if i < max_retries - 1:
+                time.sleep(1)  # Wait before retrying
+            else:
+                print("Warning: Backend may not have started properly.")
+        except Exception as e:
+            print(f"Error checking backend status: {str(e)}")
+            break
 
 
 # ---- Streamlit UI ----
@@ -36,9 +86,19 @@ def _default_config() -> Dict[str, Any]:
 # Initialize session state
 if 'config' not in st.session_state:
     st.session_state.config = _default_config()
+if 'highlighted_text' not in st.session_state:
+    st.session_state.highlighted_text = None
+if 'original_text' not in st.session_state:
+    st.session_state.original_text = None
+if 'editing_mode' not in st.session_state:
+    st.session_state.editing_mode = True
 
 # Load configuration
 config = st.session_state.config
+
+# Function to toggle editing mode
+def toggle_editing_mode():
+    st.session_state.editing_mode = not st.session_state.editing_mode
 
 
 # Function to load local image as base64
@@ -187,23 +247,55 @@ with loading_placeholder.container():
     # Run backend
     run_backend_thread()
 
+# Clear the loading placeholder after backend is loaded
+loading_placeholder.empty()
+
 # --- Fetch options from backend ---
-corpuses_resp = requests.get("http://127.0.0.1:8000/corpuses/")
-corpus_options = corpuses_resp.json() if corpuses_resp.status_code == 200 else ["MultiClaim-v2", "MediaContent-Library"]
+try:
+    corpuses_resp = requests.get("http://127.0.0.1:8000/corpuses/", timeout=5)
+    corpus_options = corpuses_resp.json() if corpuses_resp.status_code == 200 else ["MultiClaim-v2", "MediaContent-Library"]
+except Exception as e:
+    st.warning(f"Could not connect to backend: {str(e)}. Using default options.")
+    corpus_options = ["MultiClaim-v2", "MediaContent-Library"]
 
 # --- Fetch embedder options from backend ---
-embedder_resp = requests.get("http://127.0.0.1:8000/embedder_labels/")
-embedder_options = embedder_resp.json() if embedder_resp.status_code == 200 else ["Multilingual E5 Large", "Paraphrase XLM-R Multilingual v1", "Paraphrase Multilingual MPNet Base v2"]
+try:
+    embedder_resp = requests.get("http://127.0.0.1:8000/embedders/", timeout=5)
+    embedder_options = embedder_resp.json() if embedder_resp.status_code == 200 else ["Multilingual E5 Large", "Paraphrase XLM-R Multilingual v1", "Paraphrase Multilingual MPNet Base v2"]
+except Exception as e:
+    embedder_options = ["Multilingual E5 Large", "Paraphrase XLM-R Multilingual v1", "Paraphrase Multilingual MPNet Base v2"]
 
 # LLMs (static, for UI only)
-llms_resp = requests.get("http://127.0.0.1:8000/llms/")
-llms_options = llms_resp.json() if llms_resp.status_code == 200 else ["llama3:8b", "gemma3:12b", "gemma3:4b"]
+try:
+    llms_resp = requests.get("http://127.0.0.1:8000/llms/", timeout=5)
+    llms_options = llms_resp.json() if llms_resp.status_code == 200 else ["llama3:8b", "gemma3:12b", "gemma3:4b"]
+except Exception as e:
+    llms_options = ["llama3:8b", "gemma3:12b", "gemma3:4b"]
 
 
 # --- UI Layout ---
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    user_text = st.text_area("Enter your text here:", value=config['example_input'], height=150)
+    # Text input area - show either editable text area or highlighted text
+    if st.session_state.editing_mode:
+        # If we have original text saved, use that, otherwise use default
+        initial_value = st.session_state.original_text if st.session_state.original_text else config['example_input']
+        user_text = st.text_area("Enter your text here:", value=initial_value, height=150, key="text_input")
+        st.session_state.original_text = user_text  # Save the current text
+    else:
+        # Display highlighted text
+        st.markdown("**Text with highlighted claims:**")
+        st.markdown('<div class="highlighted-text">', unsafe_allow_html=True)
+        st.markdown(st.session_state.highlighted_text, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Add edit button
+        if st.button("Edit Text", key="edit_button"):
+            st.session_state.editing_mode = True
+            st.rerun()
+        
+        # Use the saved original text
+        user_text = st.session_state.original_text
 
     option_col1, option_col2, option_col3 = st.columns([1, 1, 1])
     with option_col1:
@@ -217,7 +309,7 @@ with col2:
     with button_col1:
         extract_claims_clicked = st.button("Extract claims")
     with button_col2:
-        generate_clicked = st.button("Generate Visualization")
+        discover_clicked = st.button("Discover Narrative Map")
     with option_col1:
         micro_size = st.slider("Minimum Micro-cluster size", 0, 30, 5)
     with option_col2:
@@ -225,49 +317,146 @@ with col2:
 
 # --- Results and actions ---
 if extract_claims_clicked:
-    # Load corpus (for preview, optional)
-    corpus_resp = requests.post(url="http://127.0.0.1:8000/corpus/", json={"corpus": corpus_option})
-    if corpus_resp.status_code == 200:
-        corpus_preview = corpus_resp.json()
-        st.write("**Corpus Preview:**")
-        st.dataframe(corpus_preview.get("preview", []))
-    else:
-        st.error("Failed to load corpus.")
+    try:
+        with st.spinner("Loading corpus..."):
+            # Load corpus (for preview, optional)
+            corpus_resp = requests.post(
+                url="http://127.0.0.1:8000/corpus/",
+                json={"corpus": corpus_option},
+                timeout=10
+            )
+            if corpus_resp.status_code == 200:
+                corpus_preview = corpus_resp.json()
+                st.write("**Corpus Preview:**")
+                st.dataframe(corpus_preview.get("preview", []))
+            else:
+                st.warning(f"Failed to load corpus: {corpus_resp.text}")
+        
+        with st.spinner("Extracting claims..."):
+            # Extract claims
+            claims_resp = requests.post(
+                url="http://127.0.0.1:8000/extract_claims/",
+                json={"text": user_text, "embedder": embedder_option, "corpus": corpus_option},
+                timeout=30
+            )
+            if claims_resp.status_code == 200:
+                claims_data = claims_resp.json()
+                st.success("Claims extracted!")
+                
+                # Highlight claims in the text
+                if "claim_positions" in claims_data:
+                    highlighted_text = highlight_claims(user_text, claims_data["claim_positions"])
+                    
+                    # Save highlighted text to session state and switch to display mode
+                    st.session_state.highlighted_text = highlighted_text
+                    st.session_state.editing_mode = False
+                    
+                    # Force a rerun to update the UI
+                    st.rerun()
+                
+                # Add to corpus
+                with st.spinner("Adding to corpus..."):
+                    add_resp = requests.post(
+                        url="http://127.0.0.1:8000/add_to_corpus/",
+                        json={"text": user_text, "corpus": corpus_option, "embedder": embedder_option},
+                        timeout=10
+                    )
+                    
+                    if add_resp.status_code == 200:
+                        add_data = add_resp.json()
+                        st.success(f"Added {add_data.get('added_claims', 1)} claims to corpus. New corpus size: {add_data.get('corpus_size', 'unknown')}")
+                    else:
+                        st.warning(f"Failed to add to corpus: {add_resp.text}")
+                
+                # Display extracted entities
+                if "entities" in claims_data:
+                    st.write("**Extracted Entities:**")
+                    st.write(claims_data["entities"])
+            else:
+                st.error(f"Failed to extract claims: {claims_resp.text}")
+    except requests.exceptions.ConnectionError:
+        st.error("Could not connect to backend. Please make sure the backend is running.")
+    except requests.exceptions.Timeout:
+        st.error("Request timed out. The operation might be taking too long.")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
-    # Extract claims
-    claims_resp = requests.post(
-        url="http://127.0.0.1:8000/extract_claims/",
-        json={"text": user_text, "embedder": embedder_option}
-    )
-    if claims_resp.status_code == 200:
-        claims_data = claims_resp.json()
-        st.success("Claims extracted!")
-        st.write(claims_data)
-    else:
-        st.error("Failed to extract claims.")
+if discover_clicked:
+    try:
+        with st.spinner("Discovering Narratives..."):
+            # First generate without descriptions (faster)
+            pipeline_resp = requests.post(
+                url="http://127.0.0.1:8000/run_pipeline/",
+                json={
+                    "corpus": corpus_option,
+                    "embedder": embedder_option,
+                    "min_macro_cluster_size": macro_size,
+                    "min_micro_cluster_size": micro_size
+                },
+                timeout=300  # Allow up to 5 minutes for clustering
+            )
+            
+            if pipeline_resp.status_code == 200:
+                pipeline_data = pipeline_resp.json()
+                st.success("Initial visualization generated!")
+                
+                # Display initial visualization
+                output_dir = pipeline_data.get("output_dir", f"results/{corpus_option.lower().replace('-', '_')}")
+                html_path = os.path.join(output_dir, 'narrative_map.html')
+                
+                if os.path.exists(html_path):
+                    with open(html_path, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    st.markdown('<div class="full-width-container">', unsafe_allow_html=True)
+                    st.components.v1.html(html_content, height=800, scrolling=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Start generating descriptions
+                    st.info("Generating cluster descriptions... This may take a while.")
+                    
+                    try:
+                        desc_resp = requests.post(
+                            url="http://127.0.0.1:8000/generate_descriptions/",
+                            json={"corpus": corpus_option},
+                            timeout=600  # Allow up to 10 minutes for description generation
+                        )
+                        
+                        if desc_resp.status_code == 200:
+                            st.success("Cluster descriptions generated!")
+                            
+                            # Refresh visualization
+                            with open(html_path, "r", encoding="utf-8") as f:
+                                html_content = f.read()
+                            st.markdown('<div class="full-width-container">', unsafe_allow_html=True)
+                            st.components.v1.html(html_content, height=800, scrolling=True)
+                            st.markdown('</div>', unsafe_allow_html=True)
+                        else:
+                            st.warning(f"Failed to generate descriptions: {desc_resp.text}")
+                            st.info("You can still view the visualization without descriptions.")
+                    except requests.exceptions.Timeout:
+                        st.warning("Description generation timed out. You can still view the visualization without descriptions.")
+                    except Exception as e:
+                        st.warning(f"Error generating descriptions: {str(e)}. You can still view the visualization without descriptions.")
+                else:
+                    st.error(f"HTML file not found at: {html_path}")
+            else:
+                st.error(f"Failed to generate visualization: {pipeline_resp.text}")
+    except requests.exceptions.ConnectionError:
+        st.error("Could not connect to backend. Please make sure the backend is running.")
+    except requests.exceptions.Timeout:
+        st.error("Request timed out. The clustering operation is taking too long.")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
-    # Extract entities
-    entities_resp = requests.post(
-        "http://127.0.0.1:8000/extract_entities/",
-        json={"text": user_text}
-    )
-    if entities_resp.status_code == 200:
-        entities_data = entities_resp.json()
-        st.write("**Extracted Entities:**")
-        st.write(entities_data["entities"])
-    else:
-        st.error("Failed to extract entities.")
-
-if generate_clicked:
-    st.info("Generating visualization... (implement your visualization logic here)")
-
-# --- Visualization preview (optional, as in demo.py) ---
-html_path = os.path.join("results", 'media-content', 'narrative_map.html')
-if os.path.exists(html_path):
-    with open(html_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-    st.markdown('<div class="full-width-container">', unsafe_allow_html=True)
-    st.components.v1.html(html_content, height=800, scrolling=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-else:
-    st.error(f"HTML file not found at: {html_path}")
+# --- Visualization preview (if not generated in this session) ---
+if not discover_clicked:
+    # Try to find the visualization for the selected corpus
+    corpus_dir = corpus_option.lower().replace('-', '_')
+    html_path = os.path.join("results", corpus_dir, 'narrative_map.html')
+    if os.path.exists(html_path):
+        st.subheader("Previously Discovered Narrative Map:")
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        st.markdown('<div class="full-width-container">', unsafe_allow_html=True)
+        st.components.v1.html(html_content, height=800, scrolling=True)
+        st.markdown('</div>', unsafe_allow_html=True)
