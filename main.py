@@ -404,6 +404,17 @@ if discover_clicked:
                 output_dir = pipeline_data.get("output_dir", f"results/{corpus_option.lower().replace('-', '_')}")
                 html_path = os.path.join(output_dir, 'narrative_map.html')
                 
+                # Debug information
+                st.info(f"Looking for visualization at: {html_path}")
+                st.info(f"Current working directory: {os.getcwd()}")
+                st.info(f"Directory exists: {os.path.exists(os.path.dirname(html_path))}")
+                
+                if os.path.exists(os.path.dirname(html_path)):
+                    files_in_dir = os.listdir(os.path.dirname(html_path))
+                    st.info(f"Files in directory: {files_in_dir}")
+                else:
+                    st.warning(f"Directory not found: {os.path.dirname(html_path)}")
+                
                 if os.path.exists(html_path):
                     with open(html_path, "r", encoding="utf-8") as f:
                         html_content = f.read()
@@ -439,6 +450,35 @@ if discover_clicked:
                         st.warning(f"Error generating descriptions: {str(e)}. You can still view the visualization without descriptions.")
                 else:
                     st.error(f"HTML file not found at: {html_path}")
+                    st.info("Generating descriptions to create visualization...")
+                    
+                    # Try to generate descriptions to create the visualization
+                    try:
+                        desc_resp = requests.post(
+                            url="http://127.0.0.1:8000/generate_descriptions/",
+                            json={"corpus": corpus_option},
+                            timeout=600  # Allow up to 10 minutes for description generation
+                        )
+                        
+                        if desc_resp.status_code == 200:
+                            desc_data = desc_resp.json()
+                            if desc_data.get("html_exists", False):
+                                st.success("Visualization created successfully!")
+                                # Try to load the HTML file again
+                                if os.path.exists(html_path):
+                                    with open(html_path, "r", encoding="utf-8") as f:
+                                        html_content = f.read()
+                                    st.markdown('<div class="full-width-container">', unsafe_allow_html=True)
+                                    st.components.v1.html(html_content, height=800, scrolling=True)
+                                    st.markdown('</div>', unsafe_allow_html=True)
+                                else:
+                                    st.error(f"Still could not find HTML file at: {html_path}")
+                            else:
+                                st.error("Failed to create visualization HTML file.")
+                        else:
+                            st.error(f"Failed to generate descriptions: {desc_resp.text}")
+                    except Exception as e:
+                        st.error(f"Error generating descriptions: {str(e)}")
             else:
                 st.error(f"Failed to generate visualization: {pipeline_resp.text}")
     except requests.exceptions.ConnectionError:

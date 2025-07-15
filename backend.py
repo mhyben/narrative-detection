@@ -2,6 +2,7 @@
 import os
 from typing import Optional, List
 
+import numpy as np
 import pandas as pd
 import uvicorn
 from fastapi import FastAPI
@@ -291,11 +292,13 @@ def run_pipeline_endpoint(req: PipelineRequest):
         "data": df,
         "min_cluster_size": req.min_micro_cluster_size,
         "output_dir": output_dir,
-        "generate_descriptions": False  # Don't generate descriptions yet
+        "generate_descriptions": False,  # Don't generate descriptions yet
+        "use_cache": False  # Force regeneration of clusters and visualization
     }
     
     # Run pipeline without descriptions
     pipeline = NarrativeDetectionPipeline()
+    print(f"Running pipeline with config: {pipeline_config}")
     result_df = pipeline.run_pipeline(**pipeline_config)
     
     # Return a preview or summary with only primitive types
@@ -367,13 +370,37 @@ def generate_descriptions(req: CorpusRequest):
     
     # Generate descriptions
     pipeline = NarrativeDetectionPipeline()
-    pipeline.generate_cluster_descriptions(result_df, df, output_dir)
+    print(f"Generating descriptions for corpus: {req.corpus} in directory: {output_dir}")
     
-    return {
-        "success": True,
-        "message": "Descriptions generated successfully",
-        "output_dir": output_dir
-    }
+    try:
+        # Load the 2D embeddings if they exist
+        embedding_path = os.path.join(output_dir, "narrative_map.npy")
+        if os.path.exists(embedding_path):
+            embedding_2d = np.load(embedding_path)
+            print(f"Loaded existing 2D embeddings from {embedding_path}")
+        else:
+            print(f"No existing 2D embeddings found at {embedding_path}, will generate new ones")
+            embedding_2d = None
+        
+        # Generate descriptions and update visualization
+        updated_df = pipeline.generate_cluster_descriptions(result_df, df, output_dir, embedding_2d)
+        
+        # Verify the HTML file was created
+        html_path = os.path.join(output_dir, "narrative_map.html")
+        if os.path.exists(html_path):
+            print(f"Visualization HTML file created at: {html_path}")
+        else:
+            print(f"Warning: Visualization HTML file not found at: {html_path}")
+            
+        return {
+            "success": True,
+            "message": "Descriptions generated successfully",
+            "output_dir": output_dir,
+            "html_exists": os.path.exists(html_path)
+        }
+    except Exception as e:
+        print(f"Error generating descriptions: {str(e)}")
+        return {"error": f"Failed to generate descriptions: {str(e)}"}
 
 
 # For running as a thread
