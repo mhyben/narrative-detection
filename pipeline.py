@@ -8,7 +8,6 @@ See narrative_detection_pipeline_plan.md for detailed design.
 import ast
 import os
 import pickle
-from collections import Counter
 from typing import Optional, Any, Dict, List
 
 import networkx as nx
