@@ -43,6 +43,11 @@ embedding_cache = {"Multilingual E5 Large": "intfloat/multilingual-e5-large",
 # --- Endpoints ---
 @app.get("/corpuses/")
 def list_corpora():
+    list = []
+    if os.path.exists(os.path.join('datasets', 'media-content.csv')):
+        list.append('MediaContent-Library')
+    if os.path.exists(os.path.join('datasets', 'multi-claim.csv')):
+        list.append('MultiClaim-v2')
     return ["MediaContent-Library", "MultiClaim-v2"]
 
 @app.get("/embedders/")
