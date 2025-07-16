@@ -305,15 +305,17 @@ with col2:
     with option_col3:
         llms_option = st.selectbox("LLMs:", llms_options)
 
-    button_col1, button_col2, option_col1, option_col2 = st.columns([1, 1, 1, 1])
+    button_col1, button_col2, option_col1, option_col2,  option_col3 = st.columns([1, 1, 1, 1, 1])
     with button_col1:
         extract_claims_clicked = st.button("Extract claims")
     with button_col2:
         discover_clicked = st.button("Discover Narrative Map")
     with option_col1:
-        micro_size = st.slider("Minimum Micro-cluster size", 0, 30, 5)
+        micro_size = st.slider("Min. Micro-cluster size", 0, 30, 5)
     with option_col2:
-        macro_size = st.slider("Minimum Macro-cluster size", 0, 150, 50)
+        macro_size = st.slider("Min. Macro-cluster size", 0, 150, 50)
+    with option_col3:
+        bertopic_runs = st.slider("Number of BERTopic runs:", 1, 10, 3)
 
 # --- Results and actions ---
 if extract_claims_clicked:
@@ -323,13 +325,9 @@ if extract_claims_clicked:
             corpus_resp = requests.post(
                 url="http://127.0.0.1:8000/corpus/",
                 json={"corpus": corpus_option},
-                timeout=10
+                timeout=100
             )
-            if corpus_resp.status_code == 200:
-                corpus_preview = corpus_resp.json()
-                st.write("**Corpus Preview:**")
-                st.dataframe(corpus_preview.get("preview", []))
-            else:
+            if not corpus_resp.status_code == 200:
                 st.warning(f"Failed to load corpus: {corpus_resp.text}")
         
         with st.spinner("Extracting claims..."):
@@ -391,9 +389,10 @@ if discover_clicked:
                     "corpus": corpus_option,
                     "embedder": embedder_option,
                     "min_macro_cluster_size": macro_size,
-                    "min_micro_cluster_size": micro_size
+                    "min_micro_cluster_size": micro_size,
+                    "bertopic_runs": bertopic_runs
                 },
-                timeout=300  # Allow up to 5 minutes for clustering
+                timeout=900  # Allow up to 15 minutes for clustering
             )
             
             if pipeline_resp.status_code == 200:

@@ -31,7 +31,7 @@ class PipelineRequest(BaseModel):
     embedder: Optional[str] = None
     min_macro_cluster_size: int = 50
     min_micro_cluster_size: int = 5
-    # Add more options as needed (e.g., LLM, etc.)
+    bertopic_runs: int = 3
 
 # --- In-memory cache for loaded corpus (for demo) ---
 corpus_cache = {}
@@ -255,7 +255,7 @@ def extract_entities(req: EntityExtractionRequest):
         return {"error": str(e)}
 
 @app.post("/run_pipeline/")
-def run_pipeline_endpoint(req: PipelineRequest):
+def run_pipeline(req: PipelineRequest):
     # Load corpus
     if req.corpus == "MultiClaim-v2":
         df = load_multi_claim()
@@ -291,6 +291,7 @@ def run_pipeline_endpoint(req: PipelineRequest):
     pipeline_config = {
         "data": df,
         "min_cluster_size": req.min_micro_cluster_size,
+        "max_iterations": req.bertopic_runs,
         "output_dir": output_dir,
         "generate_descriptions": False,  # Don't generate descriptions yet
         "use_cache": False  # Force regeneration of clusters and visualization
