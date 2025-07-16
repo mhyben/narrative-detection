@@ -1,3 +1,4 @@
+import re
 from collections import defaultdict
 from difflib import SequenceMatcher
 from typing import List
@@ -53,9 +54,15 @@ class NamedEntitiesExtractor:
             extracted_entities = []
 
             try:
-                entities = self.gliner.predict_entities(text, self.gliner_categories)
-                entities = [entity['text'] for entity in entities]
-                extracted_entities.extend(entities)
+                # Split text into sentences (simple approach)
+                sentences = re.split(r'(?<=[.!?])\s+', text)
+                sentences = [s.strip() for s in sentences if s.strip()]
+
+                # Extract entities from each sentence
+                for sentence in sentences:
+                    entities = self.gliner.predict_entities(sentence, self.gliner_categories)
+                    entities = [entity['text'] for entity in entities]
+                    extracted_entities.extend(entities)
             except:
                 extracted_entities.extend([])
 

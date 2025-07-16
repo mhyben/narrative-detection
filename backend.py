@@ -31,7 +31,7 @@ class PipelineRequest(BaseModel):
     embedder: Optional[str] = None
     min_macro_cluster_size: int = 50
     min_micro_cluster_size: int = 5
-    # Add more options as needed (e.g., LLM, etc.)
+    bertopic_runs: int = 3
 
 # --- In-memory cache for loaded corpus (for demo) ---
 corpus_cache = {}
@@ -43,7 +43,7 @@ embedding_cache = {"Multilingual E5 Large": "intfloat/multilingual-e5-large",
 # --- Endpoints ---
 @app.get("/corpuses/")
 def list_corpora():
-    return ["MultiClaim-v2", "MediaContent-Library"]
+    return ["MediaContent-Library", "MultiClaim-v2"]
 
 @app.get("/embedders/")
 def list_embedders():
@@ -51,7 +51,7 @@ def list_embedders():
 
 @app.get("/llms/")
 def list_llms():
-    return ["llama3:8b", "gemma3:12b", "gemma3:4b"]
+    return ["gemma3:4b", "gemma3:12b", "llama3:8b"]
 
 @app.post("/corpus/")
 def load_corpus(req: CorpusRequest):
@@ -255,7 +255,7 @@ def extract_entities(req: EntityExtractionRequest):
         return {"error": str(e)}
 
 @app.post("/run_pipeline/")
-def run_pipeline_endpoint(req: PipelineRequest):
+def run_pipeline(req: PipelineRequest):
     # Load corpus
     if req.corpus == "MultiClaim-v2":
         df = load_multi_claim()
@@ -291,6 +291,7 @@ def run_pipeline_endpoint(req: PipelineRequest):
     pipeline_config = {
         "data": df,
         "min_cluster_size": req.min_micro_cluster_size,
+        "max_iterations": req.bertopic_runs,
         "output_dir": output_dir,
         "generate_descriptions": False,  # Don't generate descriptions yet
         "use_cache": False  # Force regeneration of clusters and visualization

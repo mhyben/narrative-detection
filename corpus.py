@@ -55,7 +55,7 @@ def load_multi_claim() -> pd.DataFrame:
 
         # Extract named entities
         gliner = NamedEntitiesExtractor()
-        data['entities'] = gliner.extract_entities(data)
+        data['entities'] = gliner.extract_entities(data['text'])
 
         # Save the preprocessed data
         os.makedirs('datasets', exist_ok=True)
@@ -102,14 +102,14 @@ def load_media_content() -> pd.DataFrame:
         tiktok['lang'] = 'en'
 
         # Convert the publication datetime into just year
-        data = pd.concat([de, ro, ru]).dropna(subset=['text'])
+        data = pd.concat([de, ro, ru, tiktok]).dropna(subset=['text'])
         data = data.drop_duplicates(subset=['text'])
         data['date'] = pd.to_datetime(data['date'], dayfirst=True, utc=True).dt.strftime('%d-%m-%Y')
         data = data[['text', 'lang', 'date']]
 
         # Extract named entities
         gliner = NamedEntitiesExtractor()
-        data['entities'] = gliner.extract_entities(data)
+        data['entities'] = gliner.extract_entities(data['text'])
 
         # Save the preprocessed data
         os.makedirs('datasets', exist_ok=True)
@@ -120,5 +120,5 @@ def load_media_content() -> pd.DataFrame:
 
 
 
-# load_multi_claim()
-# load_media_content()
+load_multi_claim()
+load_media_content()

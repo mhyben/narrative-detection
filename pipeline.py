@@ -23,6 +23,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
+from entities import NamedEntitiesExtractor
 from visualization import visualize
 
 
@@ -63,8 +64,9 @@ class NarrativeDetectionPipeline:
         
         # Check if entities column exists, if not, create an empty one
         if 'entities' not in data.columns:
-            print("Warning: 'entities' column not found. Creating empty entities column.")
-            data['entities'] = [[] for _ in range(len(data))]
+            print("Warning: 'entities' column not found. Extracting entities.")
+            self.entity_extractor = NamedEntitiesExtractor()
+            data['entities'] = self.entity_extractor.extract_entities(data['text'])
 
         # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -447,6 +449,7 @@ class NarrativeDetectionPipeline:
             else:
                 all_entities.append(str(entity_list))
 
+        from collections import Counter
         entity_counts = Counter(all_entities)
         top_entities = [e for e, _ in entity_counts.most_common(5) if e]
         entity_context = ", ".join(top_entities)
@@ -454,7 +457,7 @@ class NarrativeDetectionPipeline:
         # If we have no entities, extract key terms from the texts
         if not entity_context:
             # Simple keyword extraction from texts
-            from collections import Counter
+
             import re
             
             # Combine all texts
@@ -562,22 +565,4 @@ class NarrativeDetectionPipeline:
         except Exception as e:
             print(f"Cluster (Error: {str(e)})")
             return 'No description available'
-
-    # def cluster_topics(self, data: Any, entities: Any) -> Any:
-    #     """
-    #     Cluster data into topics using incremental approach. Use appropriate embeddings.
-    #     """
-    #     pass
-    #
-    # def label_topics(self, topics: Any, entities: Any) -> Any:
-    #     """
-    #     Generate labels for topics by summarizing unique entities. Use Ollama LLM.
-    #     """
-    #     pass
-    #
-    # def cluster_narratives(self, data: Any, min_cluster_size: int = 50, min_samples: int = 5) -> Any:
-    #     """
-    #     Apply fine-grained clustering to large clusters. Iteratively split clusters until minimum size.
-    #     """
-    #     pass
 
