@@ -102,18 +102,25 @@ class NarrativeDetectionPipeline:
         # 1. Generate embeddings from text
         embeddings, model = self.embed_texts(data['text'].tolist())
 
-        # 2. Perform iterative BERTopic clustering
-        df, topic_model = self.iterative_bertopic_clustering(
-            df=data,
-            embeddings=embeddings,
-            embedding_model=model,
-            min_cluster_size=min_cluster_size,
-            max_iterations=max_iterations
-        )
+        # 2. Optionally perform BERTopic clustering
+        if max_iterations == 0:
+            print("Skipping BERTopic clustering (max_iterations=0). Assigning all to a single macro cluster.")
+            df = data.copy()
+            df['macro_cluster'] = 0  # or -1 if you prefer
+            df['topic_probability'] = 1.0
+            topic_model = None
+        else:
+            df, topic_model = self.iterative_bertopic_clustering(
+                df=data,
+                embeddings=embeddings,
+                embedding_model=model,
+                min_cluster_size=min_cluster_size,
+                max_iterations=max_iterations
+            )
 
         # 3. Perform hierarchical sub-clustering
         df = self.hierarchical_subclustering(
-            df=data,
+            df=df,
             embeddings=embeddings,
             min_cluster_size=min_cluster_size
         )
@@ -565,4 +572,6 @@ class NarrativeDetectionPipeline:
         except Exception as e:
             print(f"Cluster (Error: {str(e)})")
             return 'No description available'
+
+
 
