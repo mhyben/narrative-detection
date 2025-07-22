@@ -120,5 +120,5 @@ def load_media_content() -> pd.DataFrame:
 
 
 
-# load_multi_claim()
-# load_media_content()
+load_multi_claim()
+load_media_content()
