@@ -169,7 +169,6 @@ def add_to_corpus(req: ClaimExtractionRequest):
     corpus = getattr(req, 'corpus', None)
     if not corpus:
         return {"error": "Corpus name not provided"}
-    
     # Load or get the corpus
     if corpus not in corpus_cache:
         # Load the corpus if not in cache
@@ -183,25 +182,19 @@ def add_to_corpus(req: ClaimExtractionRequest):
             corpus_cache[corpus] = df
         except Exception as e:
             return {"error": f"Failed to load corpus: {str(e)}"}
-    
     # Get the current corpus
     df = corpus_cache[corpus]
-    
     # Split text into sentences (simple approach)
     import re
     sentences = re.split(r'(?<=[.!?])\s+', req.text)
     sentences = [s.strip() for s in sentences if s.strip()]
-    
     # Extract entities for each sentence
     extractor = NamedEntitiesExtractor()
     entities = extractor.extract_entities(pd.Series(sentences))
-    
     # Process entities to ensure they're serializable
     processed_entities = []
     for entity_list in entities:
-        # Convert each entity list to a list of strings
         processed_entities.append([str(entity) for entity in entity_list])
-    
     # Create a DataFrame for the new claims
     new_claims = pd.DataFrame({
         'text': sentences,
@@ -209,11 +202,9 @@ def add_to_corpus(req: ClaimExtractionRequest):
         'published': [pd.Timestamp.now().strftime('%d-%m-%Y')] * len(sentences),
         'entities': processed_entities
     })
-    
     # Add to corpus
     updated_corpus = pd.concat([df, new_claims], ignore_index=True)
     corpus_cache[corpus] = updated_corpus
-    
     # Save the updated corpus to disk
     try:
         # Determine the file path based on corpus name
@@ -223,13 +214,25 @@ def add_to_corpus(req: ClaimExtractionRequest):
             file_path = os.path.join('datasets', 'media-content.csv')
         else:
             file_path = os.path.join('datasets', f"{corpus.lower().replace('-', '_')}.csv")
-        
-        # Save to CSV
         updated_corpus.to_csv(file_path, index=False)
         print(f"Updated corpus saved to {file_path} with {len(updated_corpus)} samples")
     except Exception as e:
         print(f"Error saving updated corpus: {str(e)}")
-    
+    # --- Incrementally update the topic model (online mode) ---
+    try:
+        # Use the same output_dir logic as in run_pipeline
+        output_dir = f"results/{corpus.lower().replace('-', '_')}"
+        os.makedirs(output_dir, exist_ok=True)
+        # Use online_mode=True for incremental updates
+        pipeline = NarrativeDetectionPipeline(use_gpu=False, online_mode=True)
+        # Optionally, generate embeddings for new sentences
+        embeddings, _ = pipeline.embed_texts(sentences)
+        # Update the topic model with new claims
+        topic_model = pipeline.update_topic_model_with_new_claims(sentences, output_dir, embeddings=embeddings)
+        if topic_model is not None:
+            print(f"BERTopic model updated with {len(sentences)} new claims.")
+    except Exception as e:
+        print(f"Error updating BERTopic model incrementally: {str(e)}")
     # Create a simple dictionary with only primitive types
     result = {
         "success": True,
@@ -237,7 +240,6 @@ def add_to_corpus(req: ClaimExtractionRequest):
         "corpus_size": int(len(updated_corpus)),
         "added_claims": int(len(sentences))
     }
-    
     return result
 
 @app.post("/extract_entities/")

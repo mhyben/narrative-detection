@@ -16,3 +16,7 @@ levenshtein~=0.27.1
 wikipedia~=1.4.0
 gliner~=0.2.21
 scikit-learn~=1.7.0
+# For GPU acceleration (optional, requires compatible NVIDIA GPU and RAPIDS setup)
+cuml>=23.4.0  # RAPIDS cuML for GPU UMAP/HDBSCAN (optional)
+# For online/incremental BERTopic support
+bertopic[online]>=0.16.0

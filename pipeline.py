@@ -13,15 +13,26 @@ from typing import Optional, Any, Dict, List
 import networkx as nx
 import numpy as np
 import requests
+# --- RAPIDS cuML conditional import ---
+try:
+    import cuml
+    from cuml import UMAP as cumlUMAP
+    from cuml.cluster import HDBSCAN as cumlHDBSCAN
+    RAPIDS_AVAILABLE = True
+except ImportError:
+    RAPIDS_AVAILABLE = False
 import umap
 from bertopic import BERTopic
 from bertopic.representation import KeyBERTInspired
+from bertopic.vectorizers import OnlineCountVectorizer
 from httpcore import ReadTimeout
 from pandas import DataFrame
 from sentence_transformers import SentenceTransformer, util
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
+from sklearn.decomposition import IncrementalPCA
+from sklearn.cluster import MiniBatchKMeans
 
 from entities import NamedEntitiesExtractor
 from visualization import visualize
@@ -31,10 +42,15 @@ class NarrativeDetectionPipeline:
     """
     Main pipeline class for narrative detection.
     Handles user/corpus input, entity extraction, clustering, and visualization.
+    Now supports GPU acceleration (RAPIDS cuML) and online/incremental BERTopic.
     """
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, online_mode: bool = False):
         """
         Initialize the pipeline and its components. Loads configuration and sets up resource management.
+        Args:
+            config: Optional configuration dictionary
+            use_gpu: If True, use RAPIDS cuML for UMAP/HDBSCAN (GPU acceleration)
+            online_mode: If True, use online/incremental BERTopic
         """
         self.entity_extractor = None  # GLiNER
         self.topic_clusterer = None  # BERTopic
@@ -42,6 +58,7 @@ class NarrativeDetectionPipeline:
         self.micro_clusterer = None  # HDBSCAN
         self.llm_client = None  # Ollama API client
         self.save_resources = False
+        self.online_mode = online_mode
 
     def run_pipeline(self, data: DataFrame, min_cluster_size=5, max_iterations=3, output_dir="results",
                     use_cache=True, generate_descriptions=True) -> Any:
@@ -256,33 +273,108 @@ class NarrativeDetectionPipeline:
 
         return G, cosine_matrix
 
+    def save_topic_model(self, topic_model, output_dir):
+        """Save the BERTopic model to disk."""
+        model_path = os.path.join(output_dir, "bertopic_model")
+        topic_model.save(model_path)
+        print(f"BERTopic model saved to {model_path}")
+
+    def load_topic_model(self, output_dir):
+        """Load the BERTopic model from disk if it exists."""
+        model_path = os.path.join(output_dir, "bertopic_model")
+        if os.path.exists(model_path):
+            print(f"Loading BERTopic model from {model_path}")
+            return BERTopic.load(model_path)
+        return None
+
+    def update_topic_model_with_new_claims(self, new_texts, output_dir, embeddings=None):
+        """Incrementally update the BERTopic model with new claims (online mode)."""
+        topic_model = self.load_topic_model(output_dir)
+        if topic_model is None:
+            print("No existing topic model found. Cannot update.")
+            return None
+        print(f"Updating BERTopic model with {len(new_texts)} new claims...")
+        if embeddings is not None:
+            topic_model.partial_fit(new_texts, embeddings=embeddings)
+        else:
+            topic_model.partial_fit(new_texts)
+        self.save_topic_model(topic_model, output_dir)
+        return topic_model
+
     def iterative_bertopic_clustering(self, df, embeddings, embedding_model, min_cluster_size=5,
                                       n_neighbors=15, n_components=5, nr_topics="auto", max_iterations=3):
-        """Perform iterative BERTopic clustering on text until no outliers remain or max iterations reached."""
+        """Perform iterative BERTopic clustering on text until no outliers remain or max iterations reached.
+        Supports GPU acceleration and online/incremental mode."""
         print("=== Iterative BERTopic Clustering ===")
 
-        # Configure UMAP for dimensionality reduction
-        umap_model = umap.UMAP(
-            n_neighbors=n_neighbors,
-            n_components=n_components,
-            min_dist=0.0,
-            metric='cosine',
-            random_state=13
-        )
+        # --- UMAP selection (GPU/CPU) ---
+        if RAPIDS_AVAILABLE:
+            print("Using RAPIDS cuML UMAP for GPU acceleration.")
+            umap_model = cumlUMAP(
+                n_neighbors=n_neighbors,
+                n_components=n_components,
+                min_dist=0.0,
+                metric='cosine',
+                random_state=13
+            )
+        else:
+            umap_model = umap.UMAP(
+                n_neighbors=n_neighbors,
+                n_components=n_components,
+                min_dist=0.0,
+                metric='cosine',
+                random_state=13
+            )
 
-        # Configure vectorizer for better multilingual support
-        vectorizer_model = CountVectorizer(
-            ngram_range=(1, 2),
-            stop_words=None,
-            max_features=5000,
-            min_df=0.0,
-            max_df=0.5
-        )
+        # --- Vectorizer selection (online or batch) ---
+        if self.online_mode:
+            print("Using OnlineCountVectorizer for online/incremental BERTopic.")
+            vectorizer_model = OnlineCountVectorizer(
+                ngram_range=(1, 2),
+                stop_words=None,
+                max_features=5000,
+                min_df=0.0,
+                max_df=0.5
+            )
+        else:
+            vectorizer_model = CountVectorizer(
+                ngram_range=(1, 2),
+                stop_words=None,
+                max_features=5000,
+                min_df=0.0,
+                max_df=0.5
+            )
 
-        # Configure representation model for better topic descriptions
+        # --- Representation model ---
         representation_model = KeyBERTInspired()
 
-        # Initialize BERTopic
+        # --- Online/incremental mode ---
+        if self.online_mode:
+            print("Initializing BERTopic in online/incremental mode.")
+            topic_model = BERTopic(
+                embedding_model=embedding_model,
+                umap_model=umap_model,
+                vectorizer_model=vectorizer_model,
+                representation_model=representation_model,
+                min_topic_size=min_cluster_size,
+                nr_topics=nr_topics,
+                calculate_probabilities=True,
+                verbose=True,
+                low_memory=True,
+                reduce_on_fit=True,
+                hdbscan_model=None,  # Not used in online mode
+                pca_model=IncrementalPCA(n_components=n_components),
+                cluster_model=MiniBatchKMeans(n_clusters=min_cluster_size)
+            )
+            # Fit the model incrementally
+            topics, probs = topic_model.fit_transform(df['text'].tolist(), embeddings=embeddings)
+            # Save the model for future incremental updates
+            self.save_topic_model(topic_model, df.get('output_dir', 'results'))
+            df['macro_cluster'] = topics
+            df['topic_probability'] = probs if isinstance(probs, np.ndarray) else np.array(probs)
+            return df, topic_model
+
+        # --- Standard (batch) mode ---
         topic_model = BERTopic(
             embedding_model=embedding_model,
             umap_model=umap_model,
@@ -351,90 +443,84 @@ class NarrativeDetectionPipeline:
         print(f"BERTopic found {len(topic_info)} topics")
         print(f"Topic distribution:\n{df['macro_cluster'].value_counts().head(10)}")
 
+        # Save the model for future use
+        self.save_topic_model(topic_model, df.get('output_dir', 'results'))
         return df, topic_model
 
     def hierarchical_subclustering(self, df, embeddings, min_cluster_size=5):
-        """Perform hierarchical sub-clustering using Louvain + HDBScan on each macro cluster."""
+        """Perform hierarchical sub-clustering using Louvain + HDBScan on each macro cluster. Uses RAPIDS cuML HDBSCAN if GPU is enabled."""
         import community.community_louvain as community_louvain
-        import hdbscan
-
+        try:
+            import hdbscan
+        except ImportError:
+            hdbscan = None
         print("=== Fine-grained Hierarchical Sub-clustering ===")
-
-        # Initialize results
         result_df = df.copy()
         result_df['micro_cluster'] = -1
-
-        # Process each macro cluster
         for macro_id in tqdm(sorted(df['macro_cluster'].unique()), desc="Processing macro clusters"):
-            # Skip the outlier cluster if it exists
             if macro_id == -100:
                 continue
-
-            # Get cluster data
             cluster_mask = df['macro_cluster'] == macro_id
             cluster_df = df[cluster_mask]
             cluster_embeddings = embeddings[cluster_mask]
             cluster_indices = df[cluster_mask].index.tolist()
-
-            # Skip small clusters
             if len(cluster_df) < min_cluster_size:
                 continue
-
             try:
-                # Build similarity graph
                 G, _ = self.build_similarity_graph(cluster_embeddings, k=min(15, len(cluster_embeddings) - 1))
-
-                # Apply Louvain community detection
                 partition = community_louvain.best_partition(G, weight='weight')
                 louvain_labels = np.array(list(partition.values()))
-
-                # Process each Louvain community
                 for louvain_id in np.unique(louvain_labels):
-                    # Get community data
                     community_mask = louvain_labels == louvain_id
                     community_embeddings = cluster_embeddings[community_mask]
                     community_indices = [cluster_indices[i] for i, m in enumerate(community_mask) if m]
-
-                    # Skip small communities
                     if len(community_embeddings) < min_cluster_size:
                         continue
-
-                    # Apply HDBScan
-                    clusterer = hdbscan.HDBSCAN(
-                        min_cluster_size=min_cluster_size,
-                        metric='euclidean',
-                        cluster_selection_method='leaf',
-                        allow_single_cluster=True
-                    )
-                    micro_labels = clusterer.fit_predict(community_embeddings)
-
-                    # Assign micro cluster labels
+                    # --- GPU HDBSCAN if enabled ---
+                    if self.use_gpu and RAPIDS_AVAILABLE:
+                        print("Using RAPIDS cuML HDBSCAN for GPU acceleration.")
+                        clusterer = cumlHDBSCAN(
+                            min_cluster_size=min_cluster_size,
+                            metric='euclidean',
+                            cluster_selection_method='leaf',
+                            allow_single_cluster=True
+                        )
+                        micro_labels = clusterer.fit_predict(community_embeddings)
+                        micro_labels = micro_labels.get() if hasattr(micro_labels, 'get') else micro_labels
+                    elif hdbscan is not None:
+                        clusterer = hdbscan.HDBSCAN(
+                            min_cluster_size=min_cluster_size,
+                            metric='euclidean',
+                            cluster_selection_method='leaf',
+                            allow_single_cluster=True
+                        )
+                        micro_labels = clusterer.fit_predict(community_embeddings)
+                    else:
+                        print("No HDBSCAN implementation available!")
+                        micro_labels = [-1] * len(community_indices)
                     for idx, micro_id in zip(community_indices, micro_labels):
-                        if micro_id == -1:  # HDBScan outlier
+                        if micro_id == -1:
                             result_df.at[idx, 'micro_cluster'] = f"{macro_id}_{louvain_id}_outlier"
                         else:
                             result_df.at[idx, 'micro_cluster'] = f"{macro_id}_{louvain_id}_{micro_id}"
-
             except Exception as e:
                 print(f"Error processing macro cluster {macro_id}: {str(e)}")
-                # Assign all to same micro cluster on error
                 for idx in cluster_indices:
                     result_df.at[idx, 'micro_cluster'] = f"{macro_id}_0_0"
-
         return result_df
 
     def narrative_map(self, df, model):
-        """Create a 2D narrative map using UMAP."""
+        """Create a 2D narrative map using UMAP (GPU if enabled)."""
         print("Creating 2D narrative map with UMAP...")
-
         texts = df['text'].tolist()
         embeddings_np = model.encode(texts, convert_to_tensor=False)
-
-        # Normalize & reduce to 2D
         scaled = StandardScaler().fit_transform(embeddings_np)
-        reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', random_state=42)
+        if self.use_gpu and RAPIDS_AVAILABLE:
+            print("Using RAPIDS cuML UMAP for 2D reduction.")
+            reducer = cumlUMAP(n_neighbors=15, n_components=2, min_dist=0.1, metric='cosine', random_state=42)
+        else:
+            reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', random_state=42)
         embedding_2d = reducer.fit_transform(scaled)
-
         return embedding_2d
 
     def hybrid_cluster_summary(self, texts, entities, model="gemma3:4b"):
