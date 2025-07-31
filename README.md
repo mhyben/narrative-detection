@@ -28,8 +28,10 @@ This project provides a pipeline and interactive UI for detecting, clustering, a
    ```
 
 2. **Install dependencies:**
-   It is recommended to use a virtual environment (e.g., `venv` or `conda`).
+   In order to run the clustering on GPU (preferable), it is necessary to install RAPIDS using Conda environment.
    ```bash
+   conda create -n narrative-detection -c rapidsai -c conda-forge -c nvidia      rapids=25.06 python=3.10 'cuda-version>=12.0,<=12.8'
+   conda activate narrative-detection
    pip install -r requirements.txt
    ```
 

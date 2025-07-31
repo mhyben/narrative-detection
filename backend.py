@@ -289,10 +289,10 @@ def run_pipeline(req: PipelineRequest):
     output_dir = f"results/{req.corpus.lower().replace('-', '_')}"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Map embedder name to model name
-    model_name = None
-    if req.embedder and req.embedder in embedding_cache:
-        model_name = embedding_cache[req.embedder]
+    # # Map embedder name to model name
+    # model_name = None
+    # if req.embedder and req.embedder in embedding_cache:
+    #     model_name = embedding_cache[req.embedder]
     
     # Create pipeline config
     pipeline_config = {

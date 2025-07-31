@@ -44,7 +44,7 @@ class NarrativeDetectionPipeline:
     Handles user/corpus input, entity extraction, clustering, and visualization.
     Now supports GPU acceleration (RAPIDS cuML) and online/incremental BERTopic.
     """
-    def __init__(self, config: Optional[Dict[str, Any]] = None, online_mode: bool = False):
+    def __init__(self, config: Optional[Dict[str, Any]] = None, use_gpu: bool = True, online_mode: bool = False):
         """
         Initialize the pipeline and its components. Loads configuration and sets up resource management.
         Args:
@@ -58,6 +58,11 @@ class NarrativeDetectionPipeline:
         self.micro_clusterer = None  # HDBSCAN
         self.llm_client = None  # Ollama API client
         self.save_resources = False
+        self.use_gpu = use_gpu and RAPIDS_AVAILABLE
+        if self.use_gpu:
+            print(f"GPU acceleration for RAPIDS cuML is enabled.")
+        else:
+            print("GPU acceleration for RAPIDS cuML is disabled or not available.")
         self.online_mode = online_mode
 
     def run_pipeline(self, data: DataFrame, min_cluster_size=5, max_iterations=3, output_dir="results",
@@ -117,7 +122,7 @@ class NarrativeDetectionPipeline:
                 print(f"Error loading cache: {str(e)}. Running full pipeline...")
 
         # 1. Generate embeddings from text
-        embeddings, model = self.embed_texts(data['text'].tolist())
+        embeddings, model = self.embed_texts(data['text'].tolist(), output_dir=output_dir)
 
         # 2. Optionally perform BERTopic clustering
         if max_iterations == 0:
@@ -242,18 +247,33 @@ class NarrativeDetectionPipeline:
 
     @staticmethod
     def embed_texts(texts: List[str],
-                    model_name: str=None,
-                    batch_size = 64) -> Any:
+                    output_dir: str,
+                    model_name: str = None,
+                    batch_size=64) -> Any:
         """
-        Compute embeddings for BERTopic or HDBScan.
+        Compute embeddings for BERTopic or HDBScan, with caching.
         """
-
         print("[1] Generating embeddings...")
+        
+        embeddings_file = os.path.join(output_dir, "embeddings.npy")
+
+        if os.path.exists(embeddings_file):
+            print(f"Loading cached embeddings from {embeddings_file}...")
+            embeddings = np.load(embeddings_file).astype(np.float32)
+            if model_name is None:
+                model_name = "sentence-transformers/paraphrase-xlm-r-multilingual-v1"
+            model = SentenceTransformer(model_name)
+            return embeddings, model
+
         if model_name is None:
             model_name = "sentence-transformers/paraphrase-xlm-r-multilingual-v1"
 
         model = SentenceTransformer(model_name)
         embeddings = model.encode(texts, batch_size=batch_size, show_progress_bar=True, convert_to_numpy=True)
+        
+        print(f"Saving embeddings to {embeddings_file}...")
+        np.save(embeddings_file, embeddings)
+        
         return embeddings, model
 
     @staticmethod
@@ -374,10 +394,23 @@ class NarrativeDetectionPipeline:
             df['topic_probability'] = probs if isinstance(probs, np.ndarray) else np.array(probs)
             return df, topic_model
 
+        # --- HDBSCAN selection (GPU/CPU) ---
+        if self.use_gpu:
+            print("Using RAPIDS cuML HDBSCAN for GPU acceleration.")
+            hdbscan_model = cumlHDBSCAN(
+                min_cluster_size=min_cluster_size,
+                metric='euclidean',
+                cluster_selection_method='eom',
+                prediction_data=True
+            )
+        else:
+            hdbscan_model = None  # BERTopic will default to scikit-learn's HDBSCAN
+
         # --- Standard (batch) mode ---
         topic_model = BERTopic(
             embedding_model=embedding_model,
             umap_model=umap_model,
+            hdbscan_model=hdbscan_model,
             vectorizer_model=vectorizer_model,
             representation_model=representation_model,
             min_topic_size=min_cluster_size,
@@ -422,7 +455,7 @@ class NarrativeDetectionPipeline:
 
                 if topic != -1:  # Non-outlier
                     topics_result[idx] = topic
-                    # Use the first probability value if probs is multi-dimensional
+                    # Use the first probability value if probs is multidimensional
                     if isinstance(prob, (list, np.ndarray)):
                         probs_result[idx] = prob[0]
                     else:
